@@ -1,6 +1,6 @@
 {
-  "name": "vscode-test-playwright",
-  "version": "0.0.1-beta5",
+  "name": "@greglamb/vscode-test-playwright",
+  "version": "0.0.1-beta6",
   "scripts": {
     "build": "tsc",
     "prepare": "tsc",

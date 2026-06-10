@@ -42,16 +42,16 @@ See the example in [examples/custom-editor-sample/tests/draw.spec.ts](https://gi
 
 ## Quick Start
 
-- Install `@playwright/test` and `vscode-test-playwright`
+- Install `@playwright/test` and `@greglamb/vscode-test-playwright`
 
 ```bash
-npm install --save-dev @playwright/test@latest vscode-test-playwright@latest
+npm install --save-dev @playwright/test@latest @greglamb/vscode-test-playwright@latest
 ```
 
 > [!NOTE]
 > `@playwright/test` (>= 1.52) is a peer dependency — exactly one copy may be
 > loaded per process, and it must come from your project. If you consume a
-> local checkout via `"vscode-test-playwright": "file:../path/to/checkout"`,
+> local checkout via `"@greglamb/vscode-test-playwright": "file:../path/to/checkout"`,
 > add `install-links=true` to your project's `.npmrc` so npm installs a packed
 > copy instead of a symlink. A symlinked checkout resolves its own development
 > copy of `@playwright/test`, which Playwright rejects ("Requiring
@@ -60,7 +60,7 @@ npm install --save-dev @playwright/test@latest vscode-test-playwright@latest
 - edit `playwright.config.ts`:
 
 ```ts
-import type { VSCodeTestOptions, VSCodeWorkerOptions } from 'vscode-test-playwright';
+import type { VSCodeTestOptions, VSCodeWorkerOptions } from '@greglamb/vscode-test-playwright';
 import { defineConfig } from '@playwright/test';
 import path from 'path';
 
@@ -92,7 +92,7 @@ export default defineConfig<VSCodeTestOptions, VSCodeWorkerOptions>({
 - create a test file `tests/basic.spec.ts`:
 
 ```ts
-import { expect, test } from 'vscode-test-playwright';
+import { expect, test } from '@greglamb/vscode-test-playwright';
 
 test('should show a message', async ({ workbox, evaluateInVSCode }) => {
   await evaluateInVSCode(vscode => {
