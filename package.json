@@ -1,6 +1,6 @@
 {
   "name": "vscode-test-playwright",
-  "version": "0.0.1-beta4",
+  "version": "0.0.1-beta5",
   "scripts": {
     "build": "tsc",
     "prepare": "tsc",
@@ -13,12 +13,19 @@
     "testing",
     "extension"
   ],
-  "author": "Rui Figueira",
+  "author": "Rui Figueira (https://github.com/ruifigueira)",
+  "contributors": [
+    "Greg Lamb <email@greglamb.dev> (https://github.com/greglamb)"
+  ],
   "license": "Apache-2.0",
   "description": "Run VS Code extension tests with Playwright: drive the workbench UI and evaluate code inside the extension host from the same test.",
   "repository": {
     "type": "git",
     "url": "https://github.com/greglamb/vscode-test-playwright.git"
+  },
+  "homepage": "https://github.com/greglamb/vscode-test-playwright#readme",
+  "bugs": {
+    "url": "https://github.com/greglamb/vscode-test-playwright/issues"
   },
   "files": [
     "dist",
