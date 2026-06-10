@@ -1,5 +1,8 @@
 # VS Code Tests for Playwright
 
+> **Fork Notice:** This is a fork of [vscode-test-playwright](https://github.com/ruifigueira/vscode-test-playwright) by Rui Figueira.
+> See [LICENSE](./LICENSE) for copyright details.
+
 This module allows running VS Code extension tests with [playwright](https://github.com/microsoft/playwright/).
 It allows both VS Code API and UI to be tested simultaneously by combining:
 
