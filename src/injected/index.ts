@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import { createServer } from 'http';
 import { AddressInfo } from 'net';
 import { MessageRequestDataMap, MessageResponseDataMap, RequestMessage, VSCodeHandleObject } from 'src/protocol';
@@ -139,7 +140,16 @@ export async function run() {
   try {
     await new Promise<void>(r => server.listen(0, r));
     const address = server.address() as AddressInfo;
-    process.stderr.write(`VSCodeTestServer listening on http://localhost:${address.port}\n`);
+    const serverUrl = `http://localhost:${address.port}`;
+    process.stderr.write(`VSCodeTestServer listening on ${serverUrl}\n`);
+    // Hand the address to the test runner through the file configured by the
+    // electronApp fixture (PW_VSCODE_TEST_SERVER_FILE). Write + rename keeps
+    // the reader from ever seeing a partially-written file.
+    const infoFile = process.env.PW_VSCODE_TEST_SERVER_FILE;
+    if (infoFile) {
+      fs.writeFileSync(`${infoFile}.tmp`, serverUrl);
+      fs.renameSync(`${infoFile}.tmp`, infoFile);
+    }
     const ws = await new Promise<WebSocket>((resolve, reject) => {
       wsServer.once('connection', resolve);
       wsServer.once('error', reject);

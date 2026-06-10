@@ -1,11 +1,9 @@
 import { _electron, test as base, TestInfo, TraceMode, type ElectronApplication, type Page } from '@playwright/test';
 import { downloadAndUnzipVSCode, resolveCliArgsFromVSCodeExecutablePath } from '@vscode/test-electron';
 import * as cp from 'child_process';
-import type { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as readline from 'readline';
 import { WebSocket } from 'ws';
 import { ObjectHandle, VSCode, VSCodeEvaluator, VSCodeFunctionOn, VSCodeHandle } from './vscodeHandle';
 export { expect } from '@playwright/test';
@@ -42,6 +40,7 @@ type InternalWorkerFixtures = {
 }
 
 type InternalTestFixtures = {
+  _serverInfoFile: string,
   _evaluator: VSCodeEvaluator,
   _vscodeHandle: ObjectHandle<VSCode>,
 }
@@ -73,51 +72,6 @@ function getTraceMode(trace: TraceMode | 'retry-with-trace' | { mode: TraceMode;
   if (traceMode === 'retry-with-trace')
     return 'on-first-retry';
   return traceMode;
-}
-
-// adapted from https://github.com/microsoft/playwright/blob/a6b320e36224f70ad04fd520503c230d5956ba66/packages/playwright-core/src/server/electron/electron.ts#L294-L320
-function waitForLine(process: cp.ChildProcess, regex: RegExp): Promise<RegExpMatchArray> {
-  function addEventListener(
-    emitter: EventEmitter,
-    eventName: (string | symbol),
-    handler: (...args: any[]) => void) {
-    emitter.on(eventName, handler);
-    return { emitter, eventName, handler };
-  }
-
-  function removeEventListeners(listeners: Array<{
-      emitter: EventEmitter;
-      eventName: (string | symbol);
-      handler: (...args: any[]) => void;
-    }>) {
-    for (const listener of listeners)
-      listener.emitter.removeListener(listener.eventName, listener.handler);
-    listeners.splice(0, listeners.length);
-  }
-
-  return new Promise((resolve, reject) => {
-    const rl = readline.createInterface({ input: process.stderr! });
-    const failError = new Error('Process failed to launch!');
-    const listeners = [
-      addEventListener(rl, 'line', onLine),
-      addEventListener(rl, 'close', reject.bind(null, failError)),
-      addEventListener(process, 'exit', reject.bind(null, failError)),
-      // It is Ok to remove error handler because we did not create process and there is another listener.
-      addEventListener(process, 'error', reject.bind(null, failError))
-    ];
-
-    function onLine(line: string) {
-      const match = line.match(regex);
-      if (!match)
-        return;
-      cleanup();
-      resolve(match);
-    }
-
-    function cleanup() {
-      removeEventListeners(listeners);
-    }
-  });
 }
 
 export const test = base.extend<VSCodeTestFixtures & VSCodeTestOptions & InternalTestFixtures& ExperimentalVSCodeTestFixtures, VSCodeWorkerOptions & InternalWorkerFixtures>({
@@ -165,7 +119,14 @@ export const test = base.extend<VSCodeTestFixtures & VSCodeTestOptions & Interna
   }, { timeout: 0, scope: 'worker' }],
 
   // based on https://github.com/microsoft/playwright-vscode/blob/1d855b9a7aeca783223a7a9f8e3b01efbe8e16f2/tests-integration/tests/baseTest.ts
-  electronApp: [async ({ extensionDevelopmentPath, baseDir, _vscodeInstall, vscodeTrace, trace, extensionsDir, userDataDir }, use, testInfo) => {
+  _serverInfoFile: [async ({ _vscodeInstall }, use, testInfo) => {
+    const file = path.join(_vscodeInstall.cachePath, `vscode-test-server-${testInfo.testId}.txt`);
+    await fs.promises.rm(file, { force: true });
+    await use(file);
+    await fs.promises.rm(file, { force: true });
+  }, {}],
+
+  electronApp: [async ({ extensionDevelopmentPath, baseDir, _vscodeInstall, vscodeTrace, trace, extensionsDir, userDataDir, _serverInfoFile }, use, testInfo) => {
     const { installPath, cachePath } = _vscodeInstall;
 
     // remove all VSCODE_* environment variables, otherwise it fails to load custom webviews with the following error:
@@ -175,6 +136,11 @@ export const test = base.extend<VSCodeTestFixtures & VSCodeTestOptions & Interna
       if (/^VSCODE_/i.test(prop))
         delete env[prop];
     }
+
+    // Tells the injected VSCodeTestServer where to write its address (see
+    // src/injected/index.ts) so the _evaluator fixture can discover it
+    // without relying on playwright internals.
+    env.PW_VSCODE_TEST_SERVER_FILE = _serverInfoFile;
 
     const electronApp = await _electron.launch({
       executablePath: installPath,
@@ -237,22 +203,44 @@ export const test = base.extend<VSCodeTestFixtures & VSCodeTestOptions & Interna
 
   context: ({ electronApp }, use) => use(electronApp.context()),
 
-  _evaluator: async ({ playwright, electronApp, workbox, vscodeTrace }, use, testInfo) => {
-    const electronAppImpl = await (playwright as any)._toImpl(electronApp);
-    const pageImpl = await (playwright as any)._toImpl(workbox);
-    // check recent logs or wait for URL to access VSCode test server
-    const vscodeTestServerRegExp = /^VSCodeTestServer listening on (http:\/\/.*)$/;
-    const process = electronAppImpl._process as cp.ChildProcess;
-    const recentLogs = electronAppImpl._nodeConnection._browserLogsCollector.recentLogs() as string[];
-    let [match] = recentLogs.map(s => s.match(vscodeTestServerRegExp)).filter(Boolean);
-    if (!match) {
-      match = await waitForLine(process, vscodeTestServerRegExp);
+  _evaluator: async ({ playwright, electronApp, workbox, vscodeTrace, _serverInfoFile }, use, testInfo) => {
+    // electronApp must be launched before we can wait for its server.
+    void electronApp;
+    // The injected VSCodeTestServer writes its address to _serverInfoFile
+    // (via the PW_VSCODE_TEST_SERVER_FILE env var) — poll for it instead of
+    // scraping process stderr through playwright internals.
+    const deadline = Date.now() + 30_000;
+    let serverUrl: string | undefined;
+    while (Date.now() < deadline) {
+      try {
+        const content = await fs.promises.readFile(_serverInfoFile, 'utf8');
+        if (content.trim()) {
+          serverUrl = content.trim();
+          break;
+        }
+      } catch {}
+      await new Promise(f => setTimeout(f, 100));
     }
-    const ws = new WebSocket(match[1]);
-    await new Promise(r => ws.once('open', r));
+    if (!serverUrl)
+      throw new Error(`Timed out waiting for VSCodeTestServer address in ${_serverInfoFile}. Is the extension host running?`);
+    const ws = new WebSocket(serverUrl);
+    await new Promise((resolve, reject) => {
+      ws.once('open', resolve);
+      ws.once('error', reject);
+    });
     const traceMode = getTraceMode(vscodeTrace);
     const captureTrace = shouldCaptureTrace(traceMode, testInfo);
-    const evaluator = new VSCodeEvaluator(ws, captureTrace ? pageImpl : undefined);
+    // playwright._toImpl was removed from newer playwright versions. When it
+    // is unavailable, vscode evaluation calls are simply not recorded in the
+    // trace (UI tracing is unaffected) — see VSCodeEvaluator.
+    let pageImpl: any;
+    const toImpl = (playwright as any)._toImpl;
+    if (captureTrace && typeof toImpl === 'function') {
+      try {
+        pageImpl = await toImpl.call(playwright, workbox);
+      } catch {}
+    }
+    const evaluator = new VSCodeEvaluator(ws, pageImpl);
     await use(evaluator);
     ws.close();
   },
