@@ -45,6 +45,15 @@ See the example in [examples/custom-editor-sample/tests/draw.spec.ts](https://gi
 npm install --save-dev @playwright/test@latest vscode-test-playwright@latest
 ```
 
+> [!NOTE]
+> `@playwright/test` (>= 1.52) is a peer dependency — exactly one copy may be
+> loaded per process, and it must come from your project. If you consume a
+> local checkout via `"vscode-test-playwright": "file:../path/to/checkout"`,
+> add `install-links=true` to your project's `.npmrc` so npm installs a packed
+> copy instead of a symlink. A symlinked checkout resolves its own development
+> copy of `@playwright/test`, which Playwright rejects ("Requiring
+> @playwright/test second time", followed by "No tests found").
+
 - edit `playwright.config.ts`:
 
 ```ts

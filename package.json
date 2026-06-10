@@ -1,15 +1,30 @@
 {
   "name": "vscode-test-playwright",
-  "version": "0.0.1-beta2",
+  "version": "0.0.1-beta3",
   "scripts": {
     "build": "tsc",
+    "prepare": "tsc",
     "watch": "tsc --watch",
     "test": "playwright test"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": [
+    "vscode",
+    "playwright",
+    "testing",
+    "extension"
+  ],
+  "author": "Rui Figueira",
+  "license": "Apache-2.0",
+  "description": "Run VS Code extension tests with Playwright: drive the workbench UI and evaluate code inside the extension host from the same test.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/greglamb/vscode-test-playwright.git"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -25,6 +40,9 @@
     "@types/vscode": "^1.100.0",
     "@types/ws": "^8.18.1",
     "typescript": "^5.8.3"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.52.0"
   },
   "dependencies": {
     "@vscode/test-electron": "^2.5.2",
