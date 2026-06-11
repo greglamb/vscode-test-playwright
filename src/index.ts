@@ -17,7 +17,10 @@ export type VSCodeWorkerOptions = {
 }
 
 export type VSCodeTestOptions = {
-  extensionDevelopmentPath?: string;
+  // VS Code accepts repeated --extensionDevelopmentPath args, so an array
+  // loads multiple development extensions (e.g. an extension plus another
+  // extension it hard-depends on via extensionDependencies).
+  extensionDevelopmentPath?: string | string[];
   baseDir: string;
 };
 
@@ -159,7 +162,7 @@ export const test = base.extend<VSCodeTestFixtures & VSCodeTestOptions & Interna
         `--extensions-dir=${extensionsDir ?? path.join(cachePath, 'extensions')}`,
         `--user-data-dir=${userDataDir ?? path.join(cachePath, 'user-data')}`,
         `--extensionTestsPath=${path.join(__dirname, 'injected', 'index')}`,
-        ...(extensionDevelopmentPath ? [`--extensionDevelopmentPath=${extensionDevelopmentPath}`] : []),
+        ...(extensionDevelopmentPath ? [extensionDevelopmentPath].flat().map(p => `--extensionDevelopmentPath=${p}`) : []),
         baseDir,
       ],
     });
