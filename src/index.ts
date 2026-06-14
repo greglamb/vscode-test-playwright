@@ -22,6 +22,12 @@ export type VSCodeTestOptions = {
   // extension it hard-depends on via extensionDependencies).
   extensionDevelopmentPath?: string | string[];
   baseDir: string;
+  // User-level settings merged into <userDataDir>/User/settings.json before
+  // launch. Use for window/application-scoped settings that a workspace
+  // settings file cannot override — notably { 'window.menuStyle': 'custom' },
+  // which makes VS Code render DOM context menus (.context-view .monaco-menu)
+  // instead of native OS menus, so Playwright can right-click and assert them.
+  userSettings?: Record<string, unknown>;
 };
 
 type VSCodeTestFixtures = {
@@ -83,6 +89,7 @@ export const test = base.extend<VSCodeTestFixtures & VSCodeTestOptions & Interna
   vscodeTrace: ['off', { option: true, scope: 'worker' }],
   extensionDevelopmentPath: [undefined, { option: true }],
   baseDir: [async ({ _createTempDir }, use) => await use(await _createTempDir()), { option: true }],
+  userSettings: [undefined, { option: true }],
   extensionsDir: [undefined, { option: true, scope: 'worker' }],
   userDataDir: [undefined, { option: true, scope: 'worker' }],
 
@@ -129,8 +136,29 @@ export const test = base.extend<VSCodeTestFixtures & VSCodeTestOptions & Interna
     await fs.promises.rm(file, { force: true });
   }, {}],
 
-  electronApp: [async ({ extensionDevelopmentPath, baseDir, _vscodeInstall, vscodeTrace, trace, extensionsDir, userDataDir, _serverInfoFile }, use, testInfo) => {
+  electronApp: [async ({ extensionDevelopmentPath, baseDir, _vscodeInstall, vscodeTrace, trace, extensionsDir, userDataDir, userSettings, _serverInfoFile }, use, testInfo) => {
     const { installPath, cachePath } = _vscodeInstall;
+
+    // Window/application-scoped settings (e.g. window.menuStyle) must exist in
+    // the user-data-dir's settings.json at launch — a workspace settings file
+    // cannot override them. Merge userSettings before VS Code starts.
+    const effectiveUserDataDir = userDataDir ?? path.join(cachePath, 'user-data');
+    if (userSettings) {
+      const userDir = path.join(effectiveUserDataDir, 'User');
+      await fs.promises.mkdir(userDir, { recursive: true });
+      const settingsFile = path.join(userDir, 'settings.json');
+      let existing: Record<string, unknown> = {};
+      try {
+        existing = JSON.parse(await fs.promises.readFile(settingsFile, 'utf8')) as Record<string, unknown>;
+      } catch {
+        // no pre-existing settings.json
+      }
+      await fs.promises.writeFile(
+        settingsFile,
+        JSON.stringify({ ...existing, ...userSettings }, null, 2),
+        'utf8'
+      );
+    }
 
     // remove all VSCODE_* environment variables, otherwise it fails to load custom webviews with the following error:
     // InvalidStateError: Failed to register a ServiceWorker: The document is in an invalid state
@@ -160,7 +188,7 @@ export const test = base.extend<VSCodeTestFixtures & VSCodeTestOptions & Interna
         '--skip-release-notes',
         '--disable-workspace-trust',
         `--extensions-dir=${extensionsDir ?? path.join(cachePath, 'extensions')}`,
-        `--user-data-dir=${userDataDir ?? path.join(cachePath, 'user-data')}`,
+        `--user-data-dir=${effectiveUserDataDir}`,
         `--extensionTestsPath=${path.join(__dirname, 'injected', 'index')}`,
         ...(extensionDevelopmentPath ? [extensionDevelopmentPath].flat().map(p => `--extensionDevelopmentPath=${p}`) : []),
         baseDir,
