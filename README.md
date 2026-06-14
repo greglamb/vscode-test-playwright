@@ -112,6 +112,38 @@ npx playwright test
 
 Generated report will include playwright traces from VS Code, which can be very helpful to identify issues of locators for UI elements.
 
+## Test options
+
+Alongside `extensionDevelopmentPath` and the worker options (`vscodeVersion`,
+`extensions`, `userDataDir`, …), the following test option is available:
+
+### `userSettings`
+
+Extra user-level settings merged into `<userDataDir>/User/settings.json` before
+VS Code launches — for window/application-scoped settings that a workspace
+settings file cannot override.
+
+```ts
+test.use({ userSettings: { 'editor.fontSize': 18 } });
+```
+
+**Context menus work out of the box.** By default the harness sets
+`window.menuStyle: "custom"` so VS Code renders context menus in the DOM
+(`.context-view .monaco-menu`) instead of as native OS popups — native menus
+live outside the page and are invisible to Playwright. So you can right-click and
+assert/drive a context menu directly:
+
+```ts
+await row.click({ button: 'right' });
+const menu = workbox.locator('.context-view .monaco-menu');
+await expect(menu).toBeVisible();
+await menu.getByRole('menuitem', { name: 'Rename' }).click();
+```
+
+Precedence is: this default &lt; any pre-existing `settings.json` &lt; explicit
+`userSettings`. To opt back out of DOM menus, override it:
+`test.use({ userSettings: { 'window.menuStyle': 'native' } })`.
+
 ## Recording a test
 
 > [!NOTE]
