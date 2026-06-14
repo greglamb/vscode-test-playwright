@@ -22,11 +22,13 @@ export type VSCodeTestOptions = {
   // extension it hard-depends on via extensionDependencies).
   extensionDevelopmentPath?: string | string[];
   baseDir: string;
-  // User-level settings merged into <userDataDir>/User/settings.json before
-  // launch. Use for window/application-scoped settings that a workspace
-  // settings file cannot override — notably { 'window.menuStyle': 'custom' },
-  // which makes VS Code render DOM context menus (.context-view .monaco-menu)
-  // instead of native OS menus, so Playwright can right-click and assert them.
+  // Extra user-level settings merged into <userDataDir>/User/settings.json
+  // before launch (window/application-scoped settings a workspace file can't
+  // override). The harness already defaults window.menuStyle to "custom" so
+  // context menus render in the DOM (.context-view .monaco-menu) and Playwright
+  // can drive them — native OS menus render outside the page and are invisible
+  // to page automation. Override that or add any other settings here; explicit
+  // values win over the default (e.g. { 'window.menuStyle': 'native' } opts out).
   userSettings?: Record<string, unknown>;
 };
 
@@ -139,11 +141,14 @@ export const test = base.extend<VSCodeTestFixtures & VSCodeTestOptions & Interna
   electronApp: [async ({ extensionDevelopmentPath, baseDir, _vscodeInstall, vscodeTrace, trace, extensionsDir, userDataDir, userSettings, _serverInfoFile }, use, testInfo) => {
     const { installPath, cachePath } = _vscodeInstall;
 
-    // Window/application-scoped settings (e.g. window.menuStyle) must exist in
-    // the user-data-dir's settings.json at launch — a workspace settings file
-    // cannot override them. Merge userSettings before VS Code starts.
+    // Default to DOM context menus (window.menuStyle: "custom") so Playwright
+    // can see and drive them — native OS context menus render outside the page
+    // and are invisible to page automation. Precedence: this default < any
+    // pre-existing settings.json < explicit userSettings (so a consumer can opt
+    // back out with userSettings: { 'window.menuStyle': 'native' }). Written
+    // before launch because window-scoped settings can't be set per-workspace.
     const effectiveUserDataDir = userDataDir ?? path.join(cachePath, 'user-data');
-    if (userSettings) {
+    {
       const userDir = path.join(effectiveUserDataDir, 'User');
       await fs.promises.mkdir(userDir, { recursive: true });
       const settingsFile = path.join(userDir, 'settings.json');
@@ -153,11 +158,12 @@ export const test = base.extend<VSCodeTestFixtures & VSCodeTestOptions & Interna
       } catch {
         // no pre-existing settings.json
       }
-      await fs.promises.writeFile(
-        settingsFile,
-        JSON.stringify({ ...existing, ...userSettings }, null, 2),
-        'utf8'
-      );
+      const merged: Record<string, unknown> = {
+        'window.menuStyle': 'custom',
+        ...existing,
+        ...(userSettings ?? {}),
+      };
+      await fs.promises.writeFile(settingsFile, JSON.stringify(merged, null, 2), 'utf8');
     }
 
     // remove all VSCODE_* environment variables, otherwise it fails to load custom webviews with the following error:
